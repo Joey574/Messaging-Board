@@ -173,3 +173,39 @@ _start:
     mov rdi, rax        # exit code
     mov rax, 60         # syscode for exit
     syscall             # call exit
+
+.INDEX_OF:
+# Index_of(src_str, str, src_bytes, str_bytes)
+# rdi = src_string
+# rsi = str
+# rdx = src_bytes
+# rcx = str_bytes
+
+# uses r10 : r11 : rbx : rax
+
+    xor rax, rax        # src_text counter
+    xor rbx, rbx        # string counter
+
+    .INDEX_OF_L1:
+    cmp rax, rdx
+    jge .INDEX_OF_L4
+    mov r10b, BYTE PTR [rdi+rax]
+    cmp r10b, BYTE PTR [rsi+rbx]
+    jne .INDEX_OF_L2
+        inc rax
+        inc rbx
+        cmp rcx, rbx
+        jge .INDEX_OF_L3
+        jmp .INDEX_OF_L1
+    .INDEX_OF_L2:
+        mov r11, rbx
+        xor rbx, rbx
+        cmp r11, 0
+        jne .INDEX_OF_L1
+        inc rax
+        jmp .INDEX_OF_L1
+    .INDEX_OF_L3:
+    ret
+    .INDEX_OF_L4:
+    mov rax, -1
+    ret
