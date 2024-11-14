@@ -9,7 +9,7 @@ http_read_buf:
 auth_token:
     .string "auth="
 auth_key:
-    .string "9UTAxhU0Qh1ZDwTzK9hqXXaXSjcAWwjAeZbqqt0PvUpSrrbWxiLJ6YAMJFbH4ray"
+    .string "9UTAxhU0Qh1ZDwTzK9hqXXaXSjcAWwjAeZbqqt0PvUpSrrbWxiLJ6YAmJFbH4ray"
 
 .section .data
 auth_username:
