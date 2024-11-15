@@ -2,12 +2,12 @@
 .global _start
 
 .section .rodata
-http_ok:
-    .string "hello there\n"
-http_read_buf:
+success_code:
+    .string "Action completed succesfully\n"
+error_code_no_action:
+    .string "Action not supported\n"
+read_buffer:
     .zero 2048
-auth_token:
-    .string "auth="
 auth_key:
     .string "9UTAxhU0Qh1ZDwTzK9hqXXaXSjcAWwjAeZbqqt0PvUpSrrbWxiLJ6YAmJFbH4ray"
 
@@ -96,83 +96,56 @@ _start:
     # ===== read from request =====
     mov rax, 0                      # syscode for read
     mov rdi, r13                    # first param, FD, r13 = accepted request FD
-    mov rsi, offset http_read_buf   # second param, ptr to read buffer into http_read
-    mov rdx, 1024                   # third param, max bytes to read, this case 1024
+    mov rsi, offset read_buffer     # second param, ptr to read buffer into http_read
+    mov rdx, 2048                   # third param, max bytes to read, this case 2048
     syscall                         # call read
+    push rax                        # store number of bytes read
+    
 
-    # ===== check for auth cookie =====
-    xor rcx, rcx
-    xor rdx, rdx
-
-    .L1:
-    cmp rcx, 1024                           # if len > http_response_size -> exit
-    je .EXIT_FAILURE
-    mov al, BYTE PTR [auth_token+rdx]       # mov into al auth token to compare against
-    mov bl, BYTE PTR [http_read_buf+rcx]    # mov into bl http response to compare
-    cmp al, bl
-    jne .L2
-        # if token = response inc values to check against
-        inc rdx
-        inc rcx
-        cmp rdx, 4
-        jg .L3
-        # if next value to check >= len('auth=') -> exit
-        jmp .L1
-    .L2:
-        # if token != response, reset auth token we're checking againt
-        inc rcx
-        xor rdx, rdx
-        jmp .L1
-    .L3:
-
-    # ===== read auth data =====
-    xor rdx, rdx
-    .L4:
-    mov al, BYTE PTR [http_read_buf+rcx]
-    cmp al, '|'
-    je .L5
-        mov BYTE PTR [auth_username+rdx], al
-        inc rcx
-        inc rdx
-        jmp .L4
-    .L5:
-    xor rdx, rdx
-    .L6:
-    mov al, BYTE PTR [http_read_buf+rcx]
-    cmp al, ' '
-    je .L7
-        xor al, BYTE PTR [auth_key+rdx]
-        mov BYTE PTR [auth_password+rdx], al
-
-    .L7:
-
+    mov al, BYTE PTR [read_buffer]
+    cmp al, 'l'
+    je .PARSE_LOGIN
+    cmp al, 's'
+    je .PARSE_SIGNUP
+    cmp al, 'r'
+    je .PARSE_READ
+    cmp al, 'p'
+    je .PARSE_POST
+    cmp al, 'i'
+    je .PARSE_INBOX
+    cmp al, 'm'
+    je .PARSE_MSG
+    jmp .NO_ACTION
 
     # ===== write http response =====
     mov rax, 1                          # syscode for write
     mov rdi, r13                        # first param, FD, r13 = accepted connection FD
-    mov rsi, offset auth_username       # second param, addr to string data
-    mov rdx, 64                         # third param, length of string
+    mov rsi, offset success_code        # second param, addr to string data
+    mov rdx, 29                         # third param, length of string
     syscall                             # call write
 
     jmp .EXIT_SUCCESS
 
-.EXIT_SUCCESS:
-# exit with status code 0
-    mov rsp, rbp        # return stack ptr
+.PARSE_LOGIN:
 
-     # ===== exit =====
-    mov rax, 60         # syscode for exit
-    mov rdi, 0          # exit code
-    syscall             # call exit
+.PARSE_SIGNUP:
 
-.EXIT_FAILURE:
-# exit with error status code
-    mov rsp, rbp        # return stack ptr
+.PARSE_READ:
 
-    # ===== exit =====
-    mov rdi, rax        # exit code
-    mov rax, 60         # syscode for exit
-    syscall             # call exit
+.PARSE_POST:
+
+.PARSE_INBOX:
+
+.PARSE_MSG:
+
+    # ===== write http response =====
+    mov rax, 1                          # syscode for write
+    mov rdi, r13                        # first param, FD, r13 = accepted connection FD
+    mov rsi, offset success_code        # second param, addr to string data
+    mov rdx, 29                         # third param, length of string
+    syscall                             # call write
+
+    jmp .EXIT_SUCCESS
 
 .INDEX_OF:
 # Index_of(src_str, str, src_bytes, str_bytes)
@@ -209,3 +182,31 @@ _start:
     .INDEX_OF_L4:
     mov rax, -1
     ret
+
+.NO_ACTION:
+# Action not found
+    mov rax, 1                              # syscode for write
+    mov rdi, r13                            # first param, FD, r13 = accepted connection FD
+    mov rsi, offset error_code_no_action    # second param, addr to string data
+    mov rdx, 21                             # third param, length of string
+    syscall                                 # call write
+
+    jmp .EXIT_FAILURE
+
+.EXIT_SUCCESS:
+# exit with status code 0
+    mov rsp, rbp        # return stack ptr
+
+    # ===== exit =====
+    mov rax, 60         # syscode for exit
+    mov rdi, 0          # exit code
+    syscall             # call exit
+
+.EXIT_FAILURE:
+# exit with error status code
+    mov rsp, rbp        # return stack ptr
+
+    # ===== exit =====
+    mov rdi, rax        # exit code
+    mov rax, 60         # syscode for exit
+    syscall             # call exit
