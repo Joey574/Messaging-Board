@@ -54,6 +54,9 @@ and
 **aa**
 <br>
 and for that matter any repeated pattern will all result in the same ciphertext. *Feature, not a bug* ;)
+```
+This is a terrible way to secure anything DO NOT take notes from this
+```
 <br>
 
 ### Signup
@@ -105,9 +108,9 @@ The auth is an optional 64 bytes of data, expected for any action that isn't **l
 <br><br>
 The auth key will be computed by taking the stored password, *(password plaintext xored with some const key)* and xor that with the username, if the username is not 64 bytes, it will be repeated out until it is the proper size
 ```
-Obviously this is not secure, do not take notes from this and be aware it is an awful attempt to secure anything
+Again, this is not secure, do not take notes from this and be aware it is an awful attempt to secure anything
 ```
-The being said, I wanted to do something that wasn't just storing plaintext, and I've been learning a little about cryptography as of late, so why the hell not
+That being said, I wanted to do something that wasn't just storing plaintext, and I've been learning a little about cryptography as of late, so why the hell not
 <br>
 
 ### Data

@@ -6,20 +6,25 @@ success_code:
     .string "Action completed succesfully\n"
 error_code_no_action:
     .string "Action not supported\n"
-read_buffer:
-    .zero 2048
+error_code_invalid_data:
+    .string "Data missing from request\n"
 auth_key:
     .string "9UTAxhU0Qh1ZDwTzK9hqXXaXSjcAWwjAeZbqqt0PvUpSrrbWxiLJ6YAmJFbH4ray"
+users_file:
+    .asciiz "../users.txt"
 
 .section .data
-auth_username:
+read_buffer:
+    .zero 2048
+user_buffer:
+    .zero 128
+username:
     .zero 64
-auth_password:
+password:
     .zero 64
 
 .section .text
-_start:
-# Main
+_start: # Main
     mov rbp, rsp        # save stack ptr
 
     # ===== socket =====
@@ -47,8 +52,6 @@ _start:
     mov rsi, rsp        # second param, pointer to sockaddr_in
     mov rdx, 16         # third param, size of sockaddr_in
     syscall             # call bind
-    #test rax, rax       # check return value for error
-    js .EXIT_FAILURE
 
 
     # ===== listen =====
@@ -60,8 +63,7 @@ _start:
     js .EXIT_FAILURE
     
 
-# Accept Connections
-    .ACCEPT:
+.ACCEPT: # Accept incoming connection
     # ===== accept =====
     mov rax, 43         # syscode for accept
     mov rdi, r12        # first param, socket FD
@@ -86,11 +88,10 @@ _start:
 
     jmp .ACCEPT         # wait for new request
 
-.CHILD_PROCESS:
-# Parse Request
+.CHILD_PROCESS: # Parse request
     # ===== close connection =====
     mov rax, 3          # syscode for close
-    mov rdi, r12        # first param, FD to close, r13 = accepted connection FD
+    mov rdi, r12        # first param, FD to close, r12 = port FD
     syscall             # call close
 
     # ===== read from request =====
@@ -99,36 +100,62 @@ _start:
     mov rsi, offset read_buffer     # second param, ptr to read buffer into http_read
     mov rdx, 2048                   # third param, max bytes to read, this case 2048
     syscall                         # call read
-    push rax                        # store number of bytes read
-    
+    mov r14, rax
 
+    # Handle user action
     mov al, BYTE PTR [read_buffer]
     cmp al, 'l'
-    je .PARSE_LOGIN
+        je .PARSE_LOGIN
     cmp al, 's'
-    je .PARSE_SIGNUP
+        je .PARSE_SIGNUP
     cmp al, 'r'
-    je .PARSE_READ
+        je .PARSE_READ
     cmp al, 'p'
-    je .PARSE_POST
+        je .PARSE_POST
     cmp al, 'i'
-    je .PARSE_INBOX
+        je .PARSE_INBOX
     cmp al, 'm'
-    je .PARSE_MSG
+        je .PARSE_MSG
     jmp .NO_ACTION
-
-    # ===== write http response =====
-    mov rax, 1                          # syscode for write
-    mov rdi, r13                        # first param, FD, r13 = accepted connection FD
-    mov rsi, offset success_code        # second param, addr to string data
-    mov rdx, 29                         # third param, length of string
-    syscall                             # call write
-
-    jmp .EXIT_SUCCESS
 
 .PARSE_LOGIN:
 
-.PARSE_SIGNUP:
+.PARSE_SIGNUP: # Sign the user up for this wonderful messaging board :)
+    xor rcx, rcx
+    inc rcx
+
+    # Parse username
+    .PARSE_SIGNUP_L1:
+        cmp rcx, r14                            # if next byte to read is outside passed data, error
+            jge .INVALID_ACTION
+        cmp rcx, 64                             # if next byte exceeds 64 byte limit, error, jg is used here as rcx is offset from username length by 1
+            jg .INVALID_ACTION
+        mov al, BYTE PTR [read_buffer+rcx]      # load the passed byte into al
+        cmp al, ';'                             # if end of data, cont.
+            je .PARSE_SIGNUP_L2
+        mov BYTE PTR [username+rcx], al         # store the passed byte in username
+        inc rcx                                 # inc counter
+        jmp .PARSE_SIGNUP_L1                    # loop
+
+    # Parse password
+    .PARSE_SIGNUP_L2:
+        xor rdx, rdx                            # counter for password position
+        inc rcx                                 # counter for buffer position
+    .PARSE_SIGNUP_L3:
+        cmp rcx, r14                            # check if next byte exceeds size of data
+            jge .INVALID_ACTION
+        cmp rdx, 64                             # check if next byte exceeds 64 byte size limit
+            jge .INVALID_ACTION
+        mov al, BYTE PTR [read_buffer+rcx]      # load byte into al
+        cmp al, 0x0a                            # if end of data, cont.
+            je .PARSE_SIGNUP_L4
+        mov BYTE PTR [password+rdx], al         # store byte in password
+        inc rcx
+        inc rdx
+        jmp .PARSE_SIGNUP_L3
+    .PARSE_SIGNUP_L4:
+
+    # Load users.txt and check if the user already exists
 
 .PARSE_READ:
 
@@ -147,54 +174,27 @@ _start:
 
     jmp .EXIT_SUCCESS
 
-.INDEX_OF:
-# Index_of(src_str, str, src_bytes, str_bytes)
-# rdi = src_string
-# rsi = str
-# rdx = src_bytes
-# rcx = str_bytes
-
-# uses r10 : r11 : rbx : rax
-
-    xor rax, rax        # src_text counter
-    xor rbx, rbx        # string counter
-
-    .INDEX_OF_L1:
-    cmp rax, rdx
-    jge .INDEX_OF_L4
-    mov r10b, BYTE PTR [rdi+rax]
-    cmp r10b, BYTE PTR [rsi+rbx]
-    jne .INDEX_OF_L2
-        inc rax
-        inc rbx
-        cmp rcx, rbx
-        jge .INDEX_OF_L3
-        jmp .INDEX_OF_L1
-    .INDEX_OF_L2:
-        mov r11, rbx
-        xor rbx, rbx
-        cmp r11, 0
-        jne .INDEX_OF_L1
-        inc rax
-        jmp .INDEX_OF_L1
-    .INDEX_OF_L3:
-    ret
-    .INDEX_OF_L4:
-    mov rax, -1
-    ret
-
-.NO_ACTION:
-# Action not found
+.NO_ACTION: # Action not found
     mov rax, 1                              # syscode for write
     mov rdi, r13                            # first param, FD, r13 = accepted connection FD
     mov rsi, offset error_code_no_action    # second param, addr to string data
     mov rdx, 21                             # third param, length of string
     syscall                                 # call write
 
+    mov rax, 2
     jmp .EXIT_FAILURE
 
-.EXIT_SUCCESS:
-# exit with status code 0
+.INVALID_ACTION: # data missing from request
+    mov rax, 1                              # syscode for write
+    mov rdi, r13                            # first param, FD, r13 = accepted connection FD
+    mov rsi, offset error_code_invalid_data # second param, addr to string data
+    mov rdx, 26                             # third param, length of string
+    syscall                                 # call write
+
+    mov rax, 3
+    jmp .EXIT_FAILURE
+
+.EXIT_SUCCESS: # Exit with status code 0
     mov rsp, rbp        # return stack ptr
 
     # ===== exit =====
@@ -202,8 +202,7 @@ _start:
     mov rdi, 0          # exit code
     syscall             # call exit
 
-.EXIT_FAILURE:
-# exit with error status code
+.EXIT_FAILURE: # Exit with some error code
     mov rsp, rbp        # return stack ptr
 
     # ===== exit =====
