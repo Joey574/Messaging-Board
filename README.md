@@ -1,5 +1,5 @@
 # Messaging-Board
-Messaging Board with a twist ;)
+Messaging Board with a twist :)
 <br>
 
 ### Overview
@@ -34,30 +34,21 @@ Immediately some people might be wondering how a database will be implemented fo
 
 ### Login
 **NOTE:** Both **_username_** and **_password_** have a max size of **64 bytes** <br>
-**READS:** Reads data from **_user.txt_** <br>
+**READS:** Reads data from **_users.txt_** <br>
 **RETURNS:** On success a 64 byte auth key, else some error info
 <br><br>
-The login method does not expect any auth key, however, it expects both a ussername and a password to be in the data section, in the format
-
+The login method does not expect any auth key, however, it expects both a username and a password to be in the data section, in the format
 ```
 example_user;example_password
 ```
-
-The login method will then look through the **_users.txt_** file and if a matching username is found it will xor the password, padded out to 64 bytes, with some key and check if they match, if so returnning an auth key. The auth key is computed by taking the password ciphertext, and xor-ing it with the username padded out to 64 bytes.
+The login method will then look through the **_users.txt_** file and if a matching username is found it will xor the password, padded out to 64 bytes, with some key and check if they match, if so returnning an auth key. The auth key is computed by taking the password ciphertext, and xor-ing it with the username padded out to 64 bytes
 <br><br>
-Padding will be done by simply repeating the password out until it is 64 bytes long. **This is terrible.** It introduces some rather funny behavior such that
-<br>
-**a** = **aa** and **abc** = **abcabc**
-<br>
-and for that matter any repeated pattern will all result in the same ciphertext. *Feature, not a bug*
-```
-This is a terrible way to secure anything DO NOT take notes from this
-```
+Padding will be done by simply adding 0x00 to the plaintext until it reaches the proper size, in the case of the password, this has the effect of making the xor-ed password the key itself for any character that's not given, definitely not best practice, but I wanted to do something that wasn't just storing plaintext, and AES seemed a bit too ambitious for a first project 
 <br>
 
 ### Signup
 **NOTE:** Both **_username_** and **_password_** have a max size of **64 bytes** <br>
-**MODIFIES:** Given user doesn't already exist, user will be added to **_user.txt_** <br>
+**MODIFIES:** Given user doesn't already exist, user will be added to **_users.txt_** <br>
 **RETURNS:** On success, a 64 byte auth key, else some error info
 <br><br>
 The **signup** method, like the **login** method, doesn't take an auth key, instead taking in a username and a password in the format
@@ -66,9 +57,9 @@ example_user;example_password
 ```
 (the same as the login method)
 <br><br>
-After parsing both the *username* and *password*, the method will search through the **_users.txt_** file to see if any user with the same name exists, if not, the username and password is appended to the file, the password will be xor-ed with the *auth_key* before being written to the file
+After parsing both the *username* and *password*, the method will search through the **_users.txt_** file to see if any user with the same name exists, if not, the username and password is appended to the file, the plaintext password will be xor-ed with the *auth_key* before being written to the file
 <br><br>
-Both *username* and *password* will be stored as 64 bytes regardless of what the user actually inputs, 0x00 will be appended to the input until the proper length is reached
+Both *username* and *password* will be stored as 64 bytes regardless of what the user actually inputs, 0x00 will be appended to the both, until they each reach the proper length
 <br><br>
 Like the **login** method, an auth key will be returned on success, and is calculated in the same way, and in the case of some error, an error message gets returned
 
@@ -76,11 +67,12 @@ Like the **login** method, an auth key will be returned on success, and is calcu
 **READS:** Reads data from **_posts.txt_** <br>
 **RETURNS:** On success, posts from other users, else some error info
 <br><br>
-The read method expects a 64 byte auth key to be passed immediately after the action byte, from there, it will read data from **_posts.txt_** and return them, posts will be in the form
+The read method expects a 64 byte auth key to be passed immediately after the action byte, from there, it will read data from **_posts.txt_** and return it, posts are stored as plaintext in the form
 ```
 example_user: woah this is an example post!
 ```
 No other data is expected to be in the request, any subsequent data will be ignored
+<br>
 
 ### Post
 **MODIFIES:** Modofies data from **_posts.txt_** <br>
@@ -122,13 +114,9 @@ The action is encoded with 1 byte, with 6 different letters coresponding to the 
 * **Inbox -> i**
 
 ### Authentication
-The auth is an optional 64 bytes of data, expected for any action that isn't **login** or **signup**
+The auth is an optional 64 bytes of data, expected for any action that isn't **login** or **signup** 
 <br><br>
-The auth key will be computed by taking the stored password, *(password plaintext xored with some const key)* and xor that with the username, if the username is not 64 bytes, it will be repeated out until it is the proper size
-```
-Again, this is not secure, do not take notes from this and be aware it is an awful attempt to secure anything
-```
-That being said, I wanted to do something that wasn't just storing plaintext, and I've been learning a little about cryptography as of late, so why the hell not
+You can find more info on how the authenticaiton token is computed in the **_login_** and **_signup_** sections, it's incredibly basic and I **DO NOT** recommend using it for anything serious
 <br>
 
 ### Data
