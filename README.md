@@ -29,7 +29,7 @@ The web server will have 6 different actions a user can perform:
 * **Inbox**
 * **Msg**
 
-Immediately some people might be wondering how a database will be implemented for loging in, signing up, storing messages, etc. For this I plan to use the ever sophisticated *filesystem*, stored in mostly plaintext, as such I don't recommend using this for any top secret communications ;)
+Immediately some people might be wondering how a database will be implemented for loging in, signing up, storing messages, etc. For this I plan to use the ever sophisticated *filesystem*, stored in mostly plaintext, as such I don't recommend using this for any top secret communications :)
 <br>
 
 ### Login
@@ -43,17 +43,13 @@ The login method does not expect any auth key, however, it expects both a ussern
 example_user;example_password
 ```
 
-The login method will then look through the **_user.txt_** file and if a matching username is found it will xor the password, padded out to 64 bytes, with some key and check if they match, if so returnning an auth key. The auth key is computed by taking the password ciphertext, and xor-ing it with the username padded out to 64 bytes.
+The login method will then look through the **_users.txt_** file and if a matching username is found it will xor the password, padded out to 64 bytes, with some key and check if they match, if so returnning an auth key. The auth key is computed by taking the password ciphertext, and xor-ing it with the username padded out to 64 bytes.
 <br><br>
 Padding will be done by simply repeating the password out until it is 64 bytes long. **This is terrible.** It introduces some rather funny behavior such that
 <br>
-**a**
+**a** = **aa** and **abc** = **abcabc**
 <br>
-and
-<br>
-**aa**
-<br>
-and for that matter any repeated pattern will all result in the same ciphertext. *Feature, not a bug* ;)
+and for that matter any repeated pattern will all result in the same ciphertext. *Feature, not a bug*
 ```
 This is a terrible way to secure anything DO NOT take notes from this
 ```
@@ -64,17 +60,39 @@ This is a terrible way to secure anything DO NOT take notes from this
 **MODIFIES:** Given user doesn't already exist, user will be added to **_user.txt_** <br>
 **RETURNS:** On success, a 64 byte auth key, else some error info
 <br><br>
-
+The **signup** method, like the **login** method, doesn't take an auth key, instead taking in a username and a password in the format
+```
+example_user;example_password
+```
+(the same as the login method)
+<br><br>
+After parsing both the *username* and *password*, the method will search through the **_users.txt_** file to see if any user with the same name exists, if not, the username and password is appended to the file, the password will be xor-ed with the *auth_key* before being written to the file
+<br><br>
+Both *username* and *password* will be stored as 64 bytes regardless of what the user actually inputs, 0x00 will be appended to the input until the proper length is reached
+<br><br>
+Like the **login** method, an auth key will be returned on success, and is calculated in the same way, and in the case of some error, an error message gets returned
 
 ### Read
 **READS:** Reads data from **_posts.txt_** <br>
 **RETURNS:** On success, posts from other users, else some error info
 <br><br>
+The read method expects a 64 byte auth key to be passed immediately after the action byte, from there, it will read data from **_posts.txt_** and return them, posts will be in the form
+```
+example_user: woah this is an example post!
+```
+No other data is expected to be in the request, any subsequent data will be ignored
 
 ### Post
 **MODIFIES:** Modofies data from **_posts.txt_** <br>
 **RETURNS:** On success, success info, else some error info
 <br><br>
+The read method expects a 64 byte auth key to be passed immediately after the action byte, the method expects any data past this point to be a part of the actual post, an example query might look like the following
+```
+pauth_keywoah this is an example post!
+```
+(remember the p is the instruction byte, telling the web server what action to perform)
+<br><br>
+Once the post is parsed it will be written to the **_posts.txt_** file and a success message will be written, if an error occurs, an error message will be returned
 
 ### Inbox
 **READS:** Reads data from **_inbox/some_user.txt_** <br>
