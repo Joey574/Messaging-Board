@@ -220,40 +220,29 @@ _start: # Main
     cmp rax, 129                    # each user takes up 129 bytes, 64 username | 64 password | 1 newline
     jne .PARSE_SIGNUP_L6            # if out of users to cmp against, append user
 
-    xor rcx, rcx                        # clear similarity counter
+    xor rcx, rcx            # similarity counter
+    xor rdx, rdx            # checks made counter
 
-    mov rbx, QWORD PTR [user_buffer]    # load first set of 8 bytes
-    cmp rbx, QWORD PTR [username]       # cmp against requested username
-    jne .PARSE_SIGNUP_NE1
-        inc rcx                         # inc similarity counter
-    .PARSE_SIGNUP_NE1:
-    mov rbx, QWORD PTR [user_buffer+8]  # load second set of 8 bytes
-    cmp rbx, QWORD PTR [username+8]     # cmp against requested username
-    jne .PARSE_SIGNUP_NE2
-        inc rcx
-    .PARSE_SIGNUP_NE2:
-    mov rbx, QWORD PTR [user_buffer+16]  # load third set of 8 bytes
-    cmp rbx, QWORD PTR [username+16]     # cmp against requested username
-    jne .PARSE_SIGNUP_NE3
-        inc rcx
-        .PARSE_SIGNUP_NE3:
-    mov rbx, QWORD PTR [user_buffer+24]  # load fourth set of 8 bytes
-    cmp rbx, QWORD PTR [username+24]     # cmp against requested username
-    jne .PARSE_SIGNUP_NE4
-        inc rcx
-    .PARSE_SIGNUP_NE4:
-    cmp rcx, 4
-        je .USER_ALREADY_EXISTS         # if rcx = 4 then in all cases username was equal
-    jmp .PARSE_SIGNUP_L5                # loopback and read next user
+    .PARSE_SIGNUP_UE1:
+    cmp rdx, 8                                  # username = 64 bytes, we compare 8 bytes at a time, we make 8 cmps
+        je .PARSE_SIGNUP_UE3
+    mov rbx, QWORD PTR [user_buffer+(rdx*8)]    # load the next part of username from users.txt 
+    cmp rbx, QWORD PTR [username+(rdx*8)]       # cmp against requested username
+        jne .PARSE_SIGNUP_UE2                   # if != -> skip similarity inc
+    inc rcx
+    .PARSE_SIGNUP_UE2:
+    inc rdx                                     # move to next set of bytes
+    jmp .PARSE_SIGNUP_UE1                       # loop back
+
+    .PARSE_SIGNUP_UE3:
+    cmp rdx, rcx                        # if every byte we checked = bytes that were the same, name already in use
+        je .USER_ALREADY_EXISTS         # jmp to error
 
 
     cmp BYTE PTR [read_buffer], 'l'     # check if original action was to login
         je .INVALID_NAME_O_PASS         # in this case, we didn't find matching username
 
-
-    .PARSE_SIGNUP_L6:
-    # User doesn't exist, so append to users.txt
-    
+    .PARSE_SIGNUP_L6: # User doesn't exist, so append to users.txt
     # first, xor encode the password so it's not just plaintext
     mov rbx, QWORD PTR [password]
     xor rbx, QWORD PTR [auth_key]
@@ -296,7 +285,7 @@ _start: # Main
     jmp .RETURN_AUTH_KEY
 
 
-.PARSE_READ:
+.PARSE_READ: # If valid auth key is given, return posts.txt
 
 .PARSE_POST:
 
