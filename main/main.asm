@@ -8,14 +8,18 @@ error_code_no_action:       .string "Action not supported\n"
 error_code_invalid_data:    .string "Data missing from request\n"
 error_code_user_exists:     .string "User already exists\n"
 error_code_bad_auth:        .string "Username or password inccorect\n"
+error_code_bad_token:       .string "Auth token incorrect\n"
+
+users_file:                 .string "../users.txt"
+posts_file:                 .string "../posts.txt"
 
 auth_key:                   .string "9UTAxhU0Qh1ZDwTzK9hqXXaXSjcAWwjAeZbqqt0PvUpSrrbWxiLJ6YAmJFbH4ray"
-users_file:                 .string "../users.txt"
 
 .section .data
 read_buffer:    .zero 2048
 user_buffer:    .zero 129
 
+# following 3 must be in order username : password : newline
 username:       .zero 64
 password:       .zero 64
 newline:        .string "\n"
@@ -99,7 +103,7 @@ _start: # Main
     mov rsi, offset read_buffer     # second param, ptr to read buffer into http_read
     mov rdx, 2048                   # third param, max bytes to read, this case 2048
     syscall                         # call read
-    mov r14, rax
+    mov r14, rax                    # r14 now contains bytes read
 
     # Handle user action
     mov al, BYTE PTR [read_buffer]
@@ -120,61 +124,33 @@ _start: # Main
 .PARSE_LOGIN: # Log the user in if they exist
     # At this point username and password have already been parsed, and user_buffer contains user with matching username
 
-    mov rbx, QWORD PTR [password]
-    xor rbx, QWORD PTR [auth_key]
-    mov QWORD PTR [password], rbx
-    cmp rbx, QWORD PTR [user_buffer+64]
+    xor rcx, rcx
+
+    .PARSE_LOGIN_L1:
+    cmp rcx, 8
+        je .PARSE_LOGIN_L2
+    mov rbx, QWORD PTR [password+(rcx*8)]
+    xor rbx, QWORD PTR [auth_key+(rcx*8)]
+    mov QWORD PTR [password+(rcx*8)], rbx
+    cmp rbx, QWORD PTR [user_buffer+64+(rcx*8)]
         jne .INVALID_NAME_O_PASS
-    mov rbx, QWORD PTR [password+8]
-    xor rbx, QWORD PTR [auth_key+8]
-    mov QWORD PTR [password+8], rbx
-    cmp rbx, QWORD PTR [user_buffer+72]
-        jne .INVALID_NAME_O_PASS
-    mov rbx, QWORD PTR [password+16]
-    xor rbx, QWORD PTR [auth_key+16]
-    mov QWORD PTR [password+16], rbx
-    cmp rbx, QWORD PTR [user_buffer+80]
-        jne .INVALID_NAME_O_PASS
-    mov rbx, QWORD PTR [password+24]
-    xor rbx, QWORD PTR [auth_key+24]
-    mov QWORD PTR [password+24], rbx
-    cmp rbx, QWORD PTR [user_buffer+88]
-        jne .INVALID_NAME_O_PASS
-    mov rbx, QWORD PTR [password+32]
-    xor rbx, QWORD PTR [auth_key+32]
-    mov QWORD PTR [password+32], rbx
-    cmp rbx, QWORD PTR [user_buffer+96]
-        jne .INVALID_NAME_O_PASS
-    mov rbx, QWORD PTR [password+40]
-    xor rbx, QWORD PTR [auth_key+40]
-    mov QWORD PTR [password+40], rbx
-    cmp rbx, QWORD PTR [user_buffer+104]
-        jne .INVALID_NAME_O_PASS
-    mov rbx, QWORD PTR [password+48]
-    xor rbx, QWORD PTR [auth_key+48]
-    mov QWORD PTR [password+48], rbx
-    cmp rbx, QWORD PTR [user_buffer+112]
-        jne .INVALID_NAME_O_PASS
-    mov rbx, QWORD PTR [password+56]
-    xor rbx, QWORD PTR [auth_key+56]
-    mov QWORD PTR [password+56], rbx
-    cmp rbx, QWORD PTR [user_buffer+120]
-        jne .INVALID_NAME_O_PASS
+    inc rcx
+    jmp .PARSE_LOGIN_L1
+    .PARSE_LOGIN_L2:
 
     # xor-ed password matches input, return auth token
     jmp .RETURN_AUTH_KEY
 
 .PARSE_SIGNUP: # Sign the user up for this wonderful messaging board :)
     xor rcx, rcx
-    inc rcx
 
     # Parse username
     .PARSE_SIGNUP_L1:
-        cmp rcx, r14                            # if next byte to read is outside passed data, error
-            jge .INVALID_ACTION
-        cmp rcx, 64                             # if next byte exceeds 64 byte limit, error, jg is used here as rcx is offset from username length by 1
+        cmp rcx, r14                            # if next byte to read is outside passed data, error, jg is used here as data load is offset by 1
             jg .INVALID_ACTION
-        mov al, BYTE PTR [read_buffer+rcx]      # load the passed byte into al
+        cmp rcx, 64                             # if next byte exceeds 64 byte limit, error
+            jge .INVALID_ACTION
+        mov al, BYTE PTR [read_buffer+rcx+1]    # load the passed byte into al, offset 1 for action byte
         cmp al, ';'                             # if end of data, cont.
             je .PARSE_SIGNUP_L2
         mov BYTE PTR [username+rcx], al         # store the passed byte in username
@@ -184,7 +160,7 @@ _start: # Main
     # Parse password
     .PARSE_SIGNUP_L2:
         xor rdx, rdx                            # counter for password position
-        inc rcx                                 # counter for buffer position
+        add rcx, 2                              # counter for buffer position, last pos is right before ; so add 2 to get to next relevent data
     .PARSE_SIGNUP_L3:
         cmp rcx, r14                            # check if next byte exceeds size of data
             jge .INVALID_ACTION
@@ -204,8 +180,8 @@ _start: # Main
     # ===== open users.txt =====
     mov rax, 2                      # syscode for open
     mov rdi, offset users_file      # file to open
-    mov rsi, 2                      # flags for read-write
-    mov rdx, 0                      # mode, nothing to specify here
+    mov rsi, 0x402                  # flags for read-write-append
+    mov rdx, 0                      # mode, nothing to specify here, file already exists
     syscall
     mov r12, rax                    # save FD
 
@@ -218,7 +194,7 @@ _start: # Main
     syscall
 
     cmp rax, 129                    # each user takes up 129 bytes, 64 username | 64 password | 1 newline
-    jne .PARSE_SIGNUP_L6            # if out of users to cmp against, append user
+        jne .PARSE_SIGNUP_L6        # if out of users to cmp against, append user
 
     xor rcx, rcx            # similarity counter
     xor rdx, rdx            # checks made counter
@@ -239,35 +215,22 @@ _start: # Main
         je .USER_ALREADY_EXISTS         # jmp to error
 
 
+    .PARSE_SIGNUP_L6: # User doesn't exist, so append to users.txt
     cmp BYTE PTR [read_buffer], 'l'     # check if original action was to login
         je .INVALID_NAME_O_PASS         # in this case, we didn't find matching username
 
-    .PARSE_SIGNUP_L6: # User doesn't exist, so append to users.txt
     # first, xor encode the password so it's not just plaintext
-    mov rbx, QWORD PTR [password]
-    xor rbx, QWORD PTR [auth_key]
-    mov QWORD PTR [password], rbx
-    mov rbx, QWORD PTR [password + 8]
-    xor rbx, QWORD PTR [auth_key + 8]
-    mov QWORD PTR [password + 8], rbx
-    mov rbx, QWORD PTR [password + 16]
-    xor rbx, QWORD PTR [auth_key + 16]
-    mov QWORD PTR [password + 16], rbx
-    mov rbx, QWORD PTR [password + 24]
-    xor rbx, QWORD PTR [auth_key + 24]
-    mov QWORD PTR [password + 24], rbx
-    mov rbx, QWORD PTR [password + 32]
-    xor rbx, QWORD PTR [auth_key + 32]
-    mov QWORD PTR [password + 32], rbx
-    mov rbx, QWORD PTR [password + 40]
-    xor rbx, QWORD PTR [auth_key + 40]
-    mov QWORD PTR [password + 40], rbx
-    mov rbx, QWORD PTR [password + 48]
-    xor rbx, QWORD PTR [auth_key + 48]
-    mov QWORD PTR [password + 48], rbx
-    mov rbx, QWORD PTR [password + 56]
-    xor rbx, QWORD PTR [auth_key + 56]
-    mov QWORD PTR [password + 56], rbx
+    xor rcx, rcx
+    .PARSE_SIGNUP_L7:
+    cmp rcx, 8
+        jge .PARSE_SIGNUP_L8
+    mov rbx, QWORD PTR [password+(rcx*8)]
+    xor rbx, QWORD PTR [auth_key+(rcx*8)]
+    mov QWORD PTR [password+(rcx*8)], rbx
+    inc rcx
+    jmp .PARSE_SIGNUP_L7
+    .PARSE_SIGNUP_L8:
+
 
     # ===== write to file =====
     mov rax, 1                  # syscode for write
@@ -287,13 +250,91 @@ _start: # Main
 
 .PARSE_READ: # If valid auth key is given, return posts.txt
 
+    cmp r14, 65                     # 65 bytes minimum for action + auth if not present, exit w error
+        jl .INVALID_AUTH_TOKEN
+
+    # ===== open users.txt =====
+    mov rax, 2                      # syscode for open
+    mov rdi, offset users_file      # file to open
+    mov rsi, 0                      # flags for read
+    mov rdx, 0                      # mode, nothing to specify here, file already exists
+    syscall
+    mov r12, rax                    # save FD
+
+    # Loop until eof or we find matching user
+    .PARSE_READ_L1:
+    mov rax, 0                      # syscode for read
+    mov rsi, offset user_buffer     # buffer to read to
+    mov rdi, r12                    # users.txt FD
+    mov rdx, 129                    # max bytes to read
+    syscall
+
+    cmp rax, 129                    # each user takes up 129 bytes, 64 username | 64 password | 1 newline
+        jne .INVALID_AUTH_TOKEN     # if out of users to cmp against, exit w failure
+
+    # compute auth token for the user and see if they match
+    xor rcx, rcx
+    .PARSE_READ_L2:
+    cmp rcx, 8                                      # if auth tokens match, exit
+        jge .PARSE_READ_L3
+    mov rbx, QWORD PTR [user_buffer+(rcx*8)]        # load username from users.txt
+    xor rbx, QWORD PTR [user_buffer+64+(rcx*8)]     # compute hash for given user
+    cmp rbx, QWORD PTR [read_buffer+(rcx*8)+1]      # check given hash against user hash
+        jne .PARSE_READ_L1                          # move onto next user to check against if hash !=
+    inc rcx
+    jmp .PARSE_READ_L2
+    .PARSE_READ_L3:
+    # user has been authed, write posts.txt back
+
+
+    # ===== close users.txt =====
+    mov rax, 3                  # syscode for close
+    mov rdi, r12                # fd for users.txt
+    syscall
+
+
+    # ===== open posts.txt =====
+    mov rax, 2                      # syscode for open
+    mov rdi, offset posts_file      # file to open
+    mov rsi, 0                      # flags for read
+    mov rdx, 0                      # mode, nothing to specify here, file already exists
+    syscall
+    mov r12, rax                    # save FD for posts.txt
+
+
+    .PARSE_READ_L4:
+    # ===== read posts.txt =====
+    mov rax, 0                      # syscode for read
+    mov rsi, offset read_buffer     # buffer to read to
+    mov rdi, r12                    # users.txt FD
+    mov rdx, 2048                   # max bytes to read
+    syscall
+    cmp rax, 0                      # if we didn't read any bytes, finish
+        jge .PARSE_READ_L5
+
+    # ==== write data back =====
+    mov rdx, rax                    # rdx now has bytes we just read
+    mov rax, 1                      # syscode for write
+    mov rdi, r13                    # r13 = FD for accepted connection
+    mov rsi, offset read_buffer     # data we just read from file
+    syscall
+    jmp .PARSE_READ_L4              # loop back
+
+    .PARSE_READ_L5:
+    # ==== close posts.text =====
+    mov rax, 3                  # syscode for close
+    mov rdi, r12                # fd for posts.txt
+    syscall
+
+    jmp .EXIT_SUCCESS
+
 .PARSE_POST:
 
 .PARSE_INBOX:
 
 .PARSE_MSG:
 
-    # ===== write http response =====
+    # ===== write response =====
     mov rax, 1                          # syscode for write
     mov rdi, r13                        # first param, FD, r13 = accepted connection FD
     mov rsi, offset success_code        # second param, addr to string data
@@ -305,30 +346,17 @@ _start: # Main
 .RETURN_AUTH_KEY:
 
     # xor xor-ed password with username
-    mov rbx, QWORD PTR [username]
-    xor rbx, QWORD PTR [password]
-    mov QWORD PTR [auth_token], rbx
-    mov rbx, QWORD PTR [username + 8]
-    xor rbx, QWORD PTR [password + 8]
-    mov QWORD PTR [auth_token + 8], rbx
-    mov rbx, QWORD PTR [username + 16]
-    xor rbx, QWORD PTR [password + 16]
-    mov QWORD PTR [auth_token + 16], rbx
-    mov rbx, QWORD PTR [username + 24]
-    xor rbx, QWORD PTR [password + 24]
-    mov QWORD PTR [auth_token + 24], rbx
-    mov rbx, QWORD PTR [username + 32]
-    xor rbx, QWORD PTR [password + 32]
-    mov QWORD PTR [auth_token + 32], rbx
-    mov rbx, QWORD PTR [username + 40]
-    xor rbx, QWORD PTR [password + 40]
-    mov QWORD PTR [auth_token + 40], rbx
-    mov rbx, QWORD PTR [username + 48]
-    xor rbx, QWORD PTR [password + 48]
-    mov QWORD PTR [auth_token + 48], rbx
-    mov rbx, QWORD PTR [username + 56]
-    xor rbx, QWORD PTR [password + 56]
-    mov QWORD PTR [auth_token + 56], rbx
+    xor rcx, rcx
+
+    .RETURN_AUTH_KEY_L1:
+    cmp rcx, 8
+        jge .RETURN_AUTH_KEY_L2
+    mov rbx, QWORD PTR [username+(rcx*8)]
+    xor rbx, QWORD PTR [password+(rcx*8)]
+    mov QWORD PTR [auth_token+(rcx*8)], rbx
+    inc rcx
+    jmp .RETURN_AUTH_KEY_L1
+    .RETURN_AUTH_KEY_L2:
 
     # ===== write http response =====
     mov rax, 1                          # syscode for write
@@ -384,6 +412,15 @@ _start: # Main
     mov rax, 5
     jmp .EXIT_FAILURE
 
+.INVALID_AUTH_TOKEN: # auth token doesn't match any users, ec = 6
+    mov rax, 1                              # syscode for write
+    mov rdi, r13                            # r13 = accepted connection FD
+    mov rsi, offset error_code_bad_token    # addr to string data
+    mov rdx, 21                             # bytes to write
+    syscall
+
+    mov rax, 6
+    jmp .EXIT_FAILURE
 .EXIT_SUCCESS: # Exit with status code 0
     mov rsp, rbp        # return stack ptr
 
