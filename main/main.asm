@@ -2,26 +2,20 @@
 .global _start
 
 .section .rodata
-success_code:
-    .string "Action completed succesfully\n"
-error_code_no_action:
-    .string "Action not supported\n"
-error_code_invalid_data:
-    .string "Data missing from request\n"
-auth_key:
-    .string "9UTAxhU0Qh1ZDwTzK9hqXXaXSjcAWwjAeZbqqt0PvUpSrrbWxiLJ6YAmJFbH4ray"
-users_file:
-    .asciiz "../users.txt"
+success_code:               .string "Action completed succesfully\n"
+
+error_code_no_action:       .string "Action not supported\n"
+error_code_invalid_data:    .string "Data missing from request\n"
+error_code_user_exists:     .string "User already exists\n"
+
+auth_key:                   .string "9UTAxhU0Qh1ZDwTzK9hqXXaXSjcAWwjAeZbqqt0PvUpSrrbWxiLJ6YAmJFbH4ray"
+users_file:                 .asciiz "../users.txt"
 
 .section .data
-read_buffer:
-    .zero 2048
-user_buffer:
-    .zero 128
-username:
-    .zero 64
-password:
-    .zero 64
+read_buffer:    .zero 2048
+user_buffer:    .zero 129
+username:       .zero 64
+password:       .zero 64
 
 .section .text
 _start: # Main
@@ -157,6 +151,55 @@ _start: # Main
 
     # Load users.txt and check if the user already exists
 
+    # ===== open users.txt =====
+    mov rax, 2                      # syscode for open
+    mov rdi, offset users_file      # file to open
+    mov rsi, 2                      # flags for read-write
+    mov rdx, 0                      # mode, nothing to specify here
+    syscall
+    mov r12, rax                    # save FD
+
+    # Loop until eof or we find matching user
+    .PARSE_SIGNUP_L5:
+    mov rax, 0                      # syscode for read
+    mov rsi, offset user_buffer     # buffer to read to
+    mov rdi, r12                    # users.txt FD
+    mov rdx, 129                    # max bytes to read
+    syscall
+
+    cmp rax, 129
+    jne .PARSE_SIGNUP_L6
+
+    xor rcx, rcx                        # clear similarity counter
+
+    mov rbx, QWORD PTR [buffer]         # load first set of 8 bytes
+    cmp rbx, QWORD PTR [username]       # cmp against requested username
+    jne PARSE_SIGNUP_NE1
+        inc rcx                         # inc similarity counter
+    .PARSE_SIGNUP_NE1:
+    mov rbx, QWORD PTR [buffer+8]       # load second set of 8 bytes
+    cmp rbx, QWORD PTR [username+8]     # cmp against requested username
+    jne .PARSE_SIGNUP_NE2
+        inc rcx
+    .PARSE_SIGNUP_NE2:
+    mov rbx, QWORD PTR [buffer+16]       # load third set of 8 bytes
+    cmp rbx, QWORD PTR [username+16]     # cmp against requested username
+    jne .PARSE_SIGNUP_NE3
+        inc rcx
+        .PARSE_SIGNUP_NE3:
+    mov rbx, QWORD PTR [buffer+24]       # load fourth set of 8 bytes
+    cmp rbx, QWORD PTR [username+24]     # cmp against requested username
+    jne .PARSE_SIGNUP_NE4
+        inc rcx
+    .PARSE_SIGNUP_NE4:
+    cmp rcx, 4
+        je .USER_ALREADY_EXISTS         # if rcx = 4 then in all cases username was equal
+    
+
+    .PARSE_SIGNUP_L6:
+    # User doesn't exist, so append to users.txt
+
+
 .PARSE_READ:
 
 .PARSE_POST:
@@ -174,7 +217,7 @@ _start: # Main
 
     jmp .EXIT_SUCCESS
 
-.NO_ACTION: # Action not found
+.NO_ACTION: # Action not found: ec = 2
     mov rax, 1                              # syscode for write
     mov rdi, r13                            # first param, FD, r13 = accepted connection FD
     mov rsi, offset error_code_no_action    # second param, addr to string data
@@ -184,7 +227,7 @@ _start: # Main
     mov rax, 2
     jmp .EXIT_FAILURE
 
-.INVALID_ACTION: # data missing from request
+.INVALID_ACTION: # data missing from request: ec = 3
     mov rax, 1                              # syscode for write
     mov rdi, r13                            # first param, FD, r13 = accepted connection FD
     mov rsi, offset error_code_invalid_data # second param, addr to string data
@@ -192,6 +235,16 @@ _start: # Main
     syscall                                 # call write
 
     mov rax, 3
+    jmp .EXIT_FAILURE
+
+.USER_ALREADY_EXISTS: # user already exists: ec = 4
+    mov rax, 1                              # syscode for write
+    mov rdi, r13                            # FD, r13 = accepted connection FD
+    mov rsi, offset error_code_user_exists  # error code
+    mov rdx, 20                             # bytes to write
+    syscall
+
+    mov rax, 4
     jmp .EXIT_FAILURE
 
 .EXIT_SUCCESS: # Exit with status code 0
