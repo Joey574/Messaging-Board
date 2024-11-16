@@ -17,8 +17,18 @@ to find the port it was assigned and then using
 ```
 nc localhost some_port
 ```
-to write out your message
+to connect to the server
 <br><br>
+Some examples for how you can interact with the web server can be found below
+```
+sJoey574;abcd                                # signup a user with the name Joey574 and the password abcd
+lJoey574;abcd                                # login as the user with the name Joey574 and the password abcd
+rauth_key                                    # read the public posts
+wauth_keyToday, I managed to touch grass     # write a post
+mauth_keyKian;Yo, how's it going?            # send a message to the user 'Kian'
+iauth_key                                    # check your inbox for messages sent to you
+```
+<br>
 
 ## Web Server
 The web server will have 6 different actions a user can perform:
@@ -53,21 +63,19 @@ Padding will be done by simply adding 0x00 to the plaintext until it reaches the
 <br><br>
 The **signup** method, like the **login** method, doesn't take an auth key, instead taking in a username and a password in the format
 ```
-example_user;example_password
+example_user;example_password    # same format as the login method
 ```
-(the same as the login method)
-<br><br>
-After parsing both the *username* and *password*, the method will search through the **_users.txt_** file to see if any user with the same name exists, if not, the username and password is appended to the file, the plaintext password will be xor-ed with the *auth_key* before being written to the file
+After parsing both the *username* and *password*, the method will search through the **_users.txt_** file to see if any user with the same name exists, if not, the username and password are appended to the file, the plaintext password will be xor-ed with the *auth_key* before being written to the file
 <br><br>
 Both *username* and *password* will be stored as 64 bytes regardless of what the user actually inputs, 0x00 will be appended to the both, until they each reach the proper length
 <br><br>
-Like the **login** method, an auth key will be returned on success, and is calculated in the same way, and in the case of some error, an error message gets returned
+Like the **login** method, an auth key will be returned on success, and is calculated in the same way
 
 ### Read
-**READS:** Reads data from **_posts.txt_** <br>
+**READS:** Reads data from **_posts.txt_** and **_users.txt_**<br>
 **RETURNS:** On success, posts from other users, else some error info
 <br><br>
-The read method expects a 64 byte auth key to be passed immediately after the action byte, from there, it will read data from **_posts.txt_** and return it, posts are stored as plaintext in the form
+The read method expects a 64 byte auth key to be passed immediately after the action byte, from there, it will read through **_userstxt_** computing the auth key for each user and checking for a match, if a match is found it will then read data from **_posts.txt_** and return it, posts are stored as plaintext in the form
 ```
 example_user: woah this is an example post!
 ```
@@ -76,15 +84,15 @@ No other data is expected to be in the request, any subsequent data will be igno
 
 ### Post
 **MODIFIES:** Modofies data from **_posts.txt_** <br>
+**READS::** Reads data from **_users.txt_** <br>
 **RETURNS:** On success, success info, else some error info
 <br><br>
-The read method expects a 64 byte auth key to be passed immediately after the action byte, the method expects any data past this point to be a part of the actual post, an example query might look like the following
+The post method expects a 64 byte auth key to be passed immediately after the action byte, like the read method (or for that matter any of the remaining functions) it will search through **_users.txt_** to confirm a matching auth key exists, the method expects any data past this point to be a part of the actual post, an example query might look like the following
 ```
 pauth_keywoah this is an example post!
 ```
-(remember the p is the instruction byte, telling the web server what action to perform)
-<br><br>
-Once the post is parsed it will be written to the **_posts.txt_** file and a success message will be written, if an error occurs, an error message will be returned
+Once the post is parsed it will be written to the **_posts.txt_** file and a success message will be written back to the user
+<br>
 
 ### Inbox
 **READS:** Reads data from **_inbox/some_user.txt_** <br>
