@@ -152,16 +152,16 @@ _start: # Main
 
     # Parse username
     .PARSE_SIGNUP_L1:
-        cmp rcx, r14                            # if next byte to read is outside passed data, error, jg is used here as data load is offset by 1
-            jg .INVALID_ACTION
+        cmp rcx, r14                            # if next byte to read is outside passed data, error
+            jge .INVALID_ACTION
         cmp rcx, 64                             # if next byte exceeds 64 byte limit, error
             jge .INVALID_ACTION
         mov al, BYTE PTR [read_buffer+rcx+1]    # load the passed byte into al, offset 1 for action byte
         cmp al, ';'                             # if end of data, cont.
             je .PARSE_SIGNUP_L2
         mov BYTE PTR [username+rcx], al         # store the passed byte in username
-        inc rcx                                 # inc counter
-        jmp .PARSE_SIGNUP_L1                    # loop
+        inc rcx                                 
+        jmp .PARSE_SIGNUP_L1                    
 
     # Parse password
     .PARSE_SIGNUP_L2:
@@ -445,6 +445,7 @@ COMPUTE_PASSWORD_HASH: # Xors value in password with auth_key, adjusts to printa
     .COMPUTE_PASSWORD_L5:
     mov BYTE PTR [password+rcx], bl     # move data back into its position
     inc rcx
+
     jmp .COMPUTE_PASSWORD_L3
     .COMPUTE_PASSWORD_L6:
 
