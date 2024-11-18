@@ -24,7 +24,7 @@ post_buffer:    .zero 1
 user_buffer:    .zero 129
 
 # following 4 must be in order: inbox_file : username : password : newline
-inbox_file:     .string "../inbox/"
+inbox_file:     .string "../inbox"
 username:       .zero 64
 password:       .zero 64
 newline:        .string "\n"
@@ -356,27 +356,32 @@ _start: # Main
     xor rcx, rcx
     
     .PARSE_INBOX_L1:
-    cmp rcx, 64
+    cmp rcx, 64                             # check if we've exceeded max username length
         jge .PARSE_INBOX_L2
-    cmp BYTE PTR [username+rcx], 0x00
+    cmp BYTE PTR [username+rcx], 0          # check if we've encountered an early end of username
         je .PARSE_INBOX_L2
     inc rcx
     jmp .PARSE_INBOX_L1
     .PARSE_INBOX_L2:
 
-    # rcx now contains ptr to end of username, add file extension
+    mov BYTE PTR [inbox_file+8], '/'        # replace null byte with /
+
+    # rcx now contains ptr to end of username, add file extension and null terminate
     mov BYTE PTR [username+rcx], '.'
     mov BYTE PTR [username+rcx+1], 't'
     mov BYTE PTR [username+rcx+2], 'x'
     mov BYTE PTR [username+rcx+3], 't'
     mov QWORD PTR [username+rcx+4], 0
 
+
     # ===== open inbox/user.txt file =====
     mov rax, 2                      # syscode for open
     mov rdi, offset inbox_file      # file to open
-    mov rsi, 0x101                  # flags for read, create
-    mov rdx, 0                      # mode, nothing to specify here, file already exists
+    mov rsi, 0                      # flags for read
+    mov rdx, 0                      # mode, not needed
     syscall
+    test rax, rax                   # check if file actually got opened, if not, ie no file exists, exit
+        js .EXIT_SUCCESS
     mov r12, rax                    # save FD for inbox/user.txt
 
     .PARSE_INBOX_L3:
@@ -407,6 +412,40 @@ _start: # Main
 
 .PARSE_MSG: # Msg a user directly
 
+    call IS_AUTHED
+    # user has now been authed, continue execution
+
+    # setup msg format in read_buffer
+    xor rcx, rcx
+
+    .PARSE_MSG_L1:
+    cmp rcx, 8
+        jge .PARSE_MSG_L2
+    mov rbx, QWORD PTR [username+(rcx*8)]
+    mov QWORD PTR [read_buffer+(rcx*8)], rbx
+    inc rcx
+    jmp .PARSE_MSG_L1
+    .PARSE_MSG_L2:
+
+    # Expected Data Format
+    # mauth_keytarget_user;message
+
+
+    # parse target username
+    xor rcx, rcx
+
+    .PARSE_MSG_L1:
+    cmp rcx, r14                            # error if next byte is greater than the number of bytes we read
+        jge .INVALID_ACTION
+    cmp rcx, 64                             # error if target username is > 64 bytes
+        jge .INVALID_ACTION
+    mov bl, BYTE PTR [read_buffer+rcx]      # if !out_of_bounds and !>64 bytes, load the next byte
+    cmp bl, ';'                             # check for end of target username
+        je .PARSE_MSG_L2
+    mov 
+    inc rcx
+    jmp .PARSE_MSG_L2
+    .PARSE_MSG_L2:
 
 .NO_ACTION: # Action not found: ec = 2
     mov rax, 1                              # syscode for write
