@@ -19,10 +19,12 @@ auth_key:                   .string "9UTAxhU0Qh1ZDwTzK9hqXXaXSjcAWwjAeZbqqt0PvUp
 # following 2 must be in the order: pre_buffer : read_buffer 
 pre_buffer:     .zero 1
 read_buffer:    .zero 2048
+post_buffer:    .zero 1
 
 user_buffer:    .zero 129
 
-# following 3 must be in order: username : password : newline
+# following 4 must be in order: inbox_file : username : password : newline
+inbox_file:     .string "../inbox/"
 username:       .zero 64
 password:       .zero 64
 newline:        .string "\n"
@@ -169,8 +171,8 @@ _start: # Main
         cmp al, '/'                             # error on any / characters
             je .INVALID_ACTION                  
         mov BYTE PTR [username+rcx], al         # store the passed byte in username
-        inc rcx                                 
-        jmp .PARSE_SIGNUP_L1                    
+        inc rcx
+        jmp .PARSE_SIGNUP_L1
 
     # Parse password
     .PARSE_SIGNUP_L2:
@@ -305,7 +307,7 @@ _start: # Main
 
     jmp .EXIT_SUCCESS
 
-.PARSE_POST:
+.PARSE_POST: # Add user post to posts.txt
 
     call IS_AUTHED
     # if auth matches we return to the function and continue execution here
@@ -345,9 +347,65 @@ _start: # Main
 
     jmp .ACTION_SUCCESS
 
-.PARSE_INBOX:
+.PARSE_INBOX: # Return the users inbox
 
-.PARSE_MSG:
+    call IS_AUTHED
+    # user has been authed, relevent username is in username
+
+    # add .txt extension to username to complete filepath
+    xor rcx, rcx
+    
+    .PARSE_INBOX_L1:
+    cmp rcx, 64
+        jge .PARSE_INBOX_L2
+    cmp BYTE PTR [username+rcx], 0x00
+        je .PARSE_INBOX_L2
+    inc rcx
+    jmp .PARSE_INBOX_L1
+    .PARSE_INBOX_L2:
+
+    # rcx now contains ptr to end of username, add file extension
+    mov BYTE PTR [username+rcx], '.'
+    mov BYTE PTR [username+rcx+1], 't'
+    mov BYTE PTR [username+rcx+2], 'x'
+    mov BYTE PTR [username+rcx+3], 't'
+    mov QWORD PTR [username+rcx+4], 0
+
+    # ===== open inbox/user.txt file =====
+    mov rax, 2                      # syscode for open
+    mov rdi, offset inbox_file      # file to open
+    mov rsi, 0x101                  # flags for read, create
+    mov rdx, 0                      # mode, nothing to specify here, file already exists
+    syscall
+    mov r12, rax                    # save FD for inbox/user.txt
+
+    .PARSE_INBOX_L3:
+    # ===== read inbox/user.txt or create if not there =====
+    mov rax, 0                      # syscode for read
+    mov rsi, offset read_buffer     # buffer to read to
+    mov rdi, r12                    # /inbox/user.txt FD
+    mov rdx, 2048                   # max bytes to read
+    syscall
+    cmp rax, 0                      # if we didn't read any bytes, finish
+        je .PARSE_INBOX_L4
+
+    # ==== write data back =====
+    mov rdx, rax                    # rdx now has bytes we just read
+    mov rax, 1                      # syscode for write
+    mov rdi, r13                    # r13 = FD for accepted connection
+    mov rsi, offset read_buffer     # data we just read from file
+    syscall
+    jmp .PARSE_INBOX_L3             # loop back
+    .PARSE_INBOX_L4:
+
+    # ===== close inbox/users.txt file =====
+    mov rax, 3                  # syscode for close
+    mov rdi, r12                # fd for posts.txt
+    syscall
+
+    jmp .EXIT_SUCCESS
+
+.PARSE_MSG: # Msg a user directly
 
 
 .NO_ACTION: # Action not found: ec = 2
