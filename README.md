@@ -91,7 +91,7 @@ The post method expects a 64 byte auth key to be passed immediately after the ac
 ```
 pauth_keywoah this is an example post!
 ```
-Once the post is parsed it will be written to the **_posts.txt_** file and a success message will be written back to the user
+Once the post is parsed it will be written to the **_posts.txt_** file and a success message will be written back to the user, also important to note you can write multiple lines using ```nc localhost some_port << EOF ```
 <br>
 
 ### Inbox
