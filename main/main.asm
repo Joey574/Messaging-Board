@@ -16,6 +16,7 @@ posts_file:                 .string "../posts.txt"
 auth_key:                   .string "9UTAxhU0Qh1ZDwTzK9hqXXaXSjcAWwjAeZbqqt0PvUpSrrbWxiLJ6YAmJFbH4ray"
 
 .section .data
+pre_buffer:     .zero 1
 read_buffer:    .zero 2048
 user_buffer:    .zero 129
 
@@ -111,6 +112,8 @@ _start: # Main
         je .PARSE_SIGNUP            # use signup here for input parsing, jmp to .login later
     cmp al, 's'
         je .PARSE_SIGNUP
+    cmp r14, 65                     # 65 bytes minimum for action + auth, if not present, exit w error as all further actions require it
+        jl .INVALID_AUTH_TOKEN
     cmp al, 'r'
         je .PARSE_READ
     cmp al, 'p'
@@ -224,12 +227,13 @@ _start: # Main
     cmp rdx, rcx                        # if every byte we checked = bytes that were the same, name already in use
         je .USER_ALREADY_EXISTS         # jmp to error
 
-
+    jmp .PARSE_SIGNUP_L5                # loop back
     .PARSE_SIGNUP_L6: 
-    # User doesn't exist, so append to users.txt
-    
+
     cmp BYTE PTR [read_buffer], 'l'     # check if original action was to login
         je .INVALID_NAME_O_PASS         # in this case, we didn't find matching username
+
+    # User doesn't exist, so append to users.txt
 
     # ===== write to file =====
     mov rax, 1                  # syscode for write
@@ -257,11 +261,8 @@ _start: # Main
 
 .PARSE_READ: # If valid auth key is given, return posts.txt
 
-    cmp r14, 65                     # 65 bytes minimum for action + auth, if not present, exit w error
-        jl .INVALID_AUTH_TOKEN
-
-    
     call IS_AUTHED
+    # if auth matches we return to the function and continue execution here
 
     # ===== open posts.txt =====
     mov rax, 2                      # syscode for open
@@ -279,8 +280,8 @@ _start: # Main
     mov rdi, r12                    # users.txt FD
     mov rdx, 2048                   # max bytes to read
     syscall
-    cmp rax, 1                      # if we didn't read any bytes, finish
-        jl .PARSE_READ_L5
+    cmp rax, 0                      # if we didn't read any bytes, finish
+        je .PARSE_READ_L5
 
     # ==== write data back =====
     mov rdx, rax                    # rdx now has bytes we just read
@@ -300,10 +301,45 @@ _start: # Main
 
 .PARSE_POST:
 
+    call IS_AUTHED
+    # if auth matches we return to the function and continue execution here
+
+    # ===== open posts.txt =====
+    mov rax, 2                      # syscode for open
+    mov rdi, offset posts_file      # file to open
+    mov rsi, 0x402                  # flags for read-write-append
+    mov rdx, 0                      # mode, nothing to specify here, file already exists
+    syscall
+    mov r12, rax                    # save FD
+
+    # setup data in posts format
+    xor rcx, rcx
+
+    .PARSE_POST_L1:
+    cmp rcx, 8
+        jge .PARSE_POST_L2
+    mov rbx, QWORD PTR [username+(rcx*8)]
+    mov QWORD PTR [pre_buffer+(rcx*8)], rbx
+    inc rcx
+    jmp .PARSE_POST_L1
+    .PARSE_POST_L2:
+
+    mov BYTE PTR [pre_buffer+64], ':'
+    mov BYTE PTR [pre_buffer+65], ' '
+    inc r14
+
+    # ===== write to posts.txt =====
+    mov rax, 1                  # syscode for write
+    mov rdi, r12                # fd for users.txt
+    mov rsi, offset pre_buffer  # start of data we want to write
+    mov rdx, r14                # number of bytes to write  
+    syscall
+
+    jmp .ACTION_SUCCESS
+
 .PARSE_INBOX:
 
 .PARSE_MSG:
-
 
 
 .NO_ACTION: # Action not found: ec = 2
@@ -360,6 +396,15 @@ _start: # Main
 
     mov rax, 6
     jmp .EXIT_FAILURE
+
+.ACTION_SUCCESS:
+    mov rax, 1                              # syscode for write
+    mov rdi, r13                            # r13 = accepted connection FD
+    mov rsi, offset success_code            # addr to string data
+    mov rdx, 29                             # bytes to write
+    syscall
+
+    # falldown into exit_success
 .EXIT_SUCCESS: # Exit with status code 0
     mov rsp, rbp        # return stack ptr
 
@@ -454,6 +499,7 @@ COMPUTE_PASSWORD_HASH: # Xors value in password with auth_key, adjusts to printa
 IS_AUTHED: # Ret to cller is user is authed, else errors
     # expects the auth token to check against to be in read_buffer
     # if user is authed, we ret back to caller, else we exit with .INVALID_AUTH_TOKEN
+    # if user is authed, username and password will contain the proper users data
 
     # ===== open users.txt =====
     mov rax, 2                      # syscode for open
@@ -474,7 +520,6 @@ IS_AUTHED: # Ret to cller is user is authed, else errors
     cmp rax, 129                    # each user takes up 129 bytes, 64 username | 64 password | 1 newline
         jne .INVALID_AUTH_TOKEN     # if out of users to cmp against, exit w failure
 
-
     call COMPUTE_AUTH_KEY
     # auth token now contains the computed auth token from the user we're checking against
 
@@ -485,7 +530,7 @@ IS_AUTHED: # Ret to cller is user is authed, else errors
         jge .IS_AUTHED_L9
     mov rbx, QWORD PTR [auth_token+(rcx*8)]
     cmp rbx, QWORD PTR [read_buffer+(rcx*8)+1]
-        jne .IS_AUTHED_L1
+        jne .IS_AUTHED_L1                           # If auth tokens don't match, check against next user
     inc rcx
     jmp .IS_AUTHED_L8
     .IS_AUTHED_L9:
