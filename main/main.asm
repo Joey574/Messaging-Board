@@ -16,11 +16,13 @@ posts_file:                 .string "../posts.txt"
 auth_key:                   .string "9UTAxhU0Qh1ZDwTzK9hqXXaXSjcAWwjAeZbqqt0PvUpSrrbWxiLJ6YAmJFbH4ray"
 
 .section .data
+# following 2 must be in the order: pre_buffer : read_buffer 
 pre_buffer:     .zero 1
 read_buffer:    .zero 2048
+
 user_buffer:    .zero 129
 
-# following 3 must be in order username : password : newline
+# following 3 must be in order: username : password : newline
 username:       .zero 64
 password:       .zero 64
 newline:        .string "\n"
@@ -162,6 +164,10 @@ _start: # Main
         mov al, BYTE PTR [read_buffer+rcx+1]    # load the passed byte into al, offset 1 for action byte
         cmp al, ';'                             # if end of data, cont.
             je .PARSE_SIGNUP_L2
+        cmp al, '.'                             # error on any . characters
+            je .INVALID_ACTION
+        cmp al, '/'                             # error on any / characters
+            je .INVALID_ACTION                  
         mov BYTE PTR [username+rcx], al         # store the passed byte in username
         inc rcx                                 
         jmp .PARSE_SIGNUP_L1                    
@@ -315,6 +321,7 @@ _start: # Main
     # setup data in posts format
     xor rcx, rcx
 
+    # copy username into start of request
     .PARSE_POST_L1:
     cmp rcx, 8
         jge .PARSE_POST_L2
@@ -325,8 +332,9 @@ _start: # Main
     .PARSE_POST_L2:
 
     mov BYTE PTR [pre_buffer+64], ':'
-    mov BYTE PTR [pre_buffer+65], ' '
-    inc r14
+    mov BYTE PTR [pre_buffer+65], 0x0a
+    mov BYTE PTR [read_buffer+r14], 0x0a
+    add r14, 2
 
     # ===== write to posts.txt =====
     mov rax, 1                  # syscode for write
