@@ -438,6 +438,15 @@ _start: # Main
     jmp .PARSE_MSG_L1
     .PARSE_MSG_L2:
     mov r12, rdx                            # r12 now contains ptr to ';' in the input data
+    
+    # clear rest of data
+    .PARSE_MSG_L1A:
+    cmp rcx, 64
+        jge .PARSE_MSG_L1B
+    mov BYTE PTR [password+rcx], 0          # null terminate rest of password
+    inc rcx
+    jmp .PARSE_MSG_L1A
+    .PARSE_MSG_L1B:
     # password now contains target username
 
 
@@ -517,6 +526,7 @@ _start: # Main
     mov BYTE PTR [username+rcx+3], 't'
     mov QWORD PTR [username+rcx+4], 0
 
+    # DEGUB
     mov rax, 1
     mov rsi, offset inbox_file
     mov rdi, r13
@@ -607,7 +617,33 @@ _start: # Main
     jmp .EXIT_FAILURE
 
 .USER_NOT_FOUND: # target user not found: ec = 7
-   mov rax, 1                              # syscode for write
+
+    mov rax, 1
+    mov rdi, r13
+    mov rsi, offset password
+    mov rdx, 64
+    syscall
+
+    mov rax, 1
+    mov rdi, r13
+    mov rsi, offset newline
+    mov rdx, 1
+    syscall
+
+    mov rax, 1
+    mov rdi, r13
+    mov rsi, offset user_buffer
+    mov rdx, 64
+    syscall
+
+    mov rax, 1
+    mov rdi, r13
+    mov rsi, offset newline
+    mov rdx, 1
+    syscall
+
+
+    mov rax, 1                              # syscode for write
     mov rdi, r13                            # r13 = accepted connection FD
     mov rsi, offset error_code_no_user      # addr to string data
     mov rdx, 15                             # bytes to write
