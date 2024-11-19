@@ -9,6 +9,7 @@ error_code_invalid_data:    .string "Data missing from request\n"
 error_code_user_exists:     .string "User already exists\n"
 error_code_bad_auth:        .string "Username or password inccorect\n"
 error_code_bad_token:       .string "Auth token incorrect\n"
+error_code_no_user:         .string "User not found\n"
 
 users_file:                 .string "../users.txt"
 posts_file:                 .string "../posts.txt"
@@ -415,37 +416,140 @@ _start: # Main
     call IS_AUTHED
     # user has now been authed, continue execution
 
-    # setup msg format in read_buffer
-    xor rcx, rcx
-
-    .PARSE_MSG_L1:
-    cmp rcx, 8
-        jge .PARSE_MSG_L2
-    mov rbx, QWORD PTR [username+(rcx*8)]
-    mov QWORD PTR [read_buffer+(rcx*8)], rbx
-    inc rcx
-    jmp .PARSE_MSG_L1
-    .PARSE_MSG_L2:
-
     # Expected Data Format
     # mauth_keytarget_user;message
 
 
-    # parse target username
-    xor rcx, rcx
+    # parse target username, tmp store in user_buffer
+    xor rcx, rcx                # bytes read counter
+    mov rdx, 65                 # offset to end of auth key, data ptr
 
     .PARSE_MSG_L1:
-    cmp rcx, r14                            # error if next byte is greater than the number of bytes we read
+    cmp rdx, r14                            # error if next byte is greater than the number of bytes user sent
         jge .INVALID_ACTION
     cmp rcx, 64                             # error if target username is > 64 bytes
         jge .INVALID_ACTION
-    mov bl, BYTE PTR [read_buffer+rcx]      # if !out_of_bounds and !>64 bytes, load the next byte
+    mov bl, BYTE PTR [read_buffer+rdx]      # load next byte
     cmp bl, ';'                             # check for end of target username
         je .PARSE_MSG_L2
-    mov 
+    mov BYTE PTR [password+rcx], bl
     inc rcx
-    jmp .PARSE_MSG_L2
+    inc rdx
+    jmp .PARSE_MSG_L1
     .PARSE_MSG_L2:
+    mov r12, rdx                            # r12 now contains ptr to ';' in the input data
+    # password now contains target username
+
+
+    # ===== open users.txt =====
+    mov rax, 2                      # syscode for open
+    mov rdi, offset users_file      # file to open
+    mov rsi, 0                      # flags for read
+    mov rdx, 0                      # mode, nothing to specify here, file already exists
+    syscall
+    mov r11, rax                    # save FD
+
+    # ===== read from users.txt and loop for matching username =====
+    .PARSE_MSG_L3:
+    mov rax, 0                      # syscode for read
+    mov rsi, offset user_buffer     # buffer to read to
+    mov rdi, r11                    # users.txt FD
+    mov rdx, 129                    # max bytes to read
+    syscall
+    cmp rax, 129                    # no more users and we didn't find a matching one
+        jne .USER_NOT_FOUND
+
+    # check for matching username
+    xor rcx, rcx
+
+    .PARSE_MSG_L4:
+    cmp rcx, 8
+        jge .PARSE_MSG_L5
+    mov rax, QWORD PTR [user_buffer+(rcx*8)]        # some_user is stored in user_buffer, load 8 bytes from it
+    cmp rax, QWORD PTR [password+(rcx*8)]           # target username stored in password, compare against that
+        jne .PARSE_MSG_L3
+    inc rcx
+    jmp .PARSE_MSG_L4
+    .PARSE_MSG_L5:
+    # matching user has been found, format message and write to file
+
+    # ===== close users.txt =====
+    mov rax, 3                  # syscode for close
+    mov rdi, r11                # fd for users.txt
+    syscall
+
+    sub r12, 65             # make room for 64 bytes of username + ':' + '\n' (only need 65 bc we can overwrite ';' )
+    xor rcx, rcx            # byte counter
+
+    .PARSE_MSG_L6:
+    cmp rcx, 8
+        jge .PARSE_MSG_L7
+    mov rbx, QWORD PTR [username+(rcx*8)]                   # load 8 bytes from host username
+    mov QWORD PTR [read_buffer+r12+(rcx*8)], rbx            # store in the read buffer
+    inc rcx
+    jmp .PARSE_MSG_L6
+    .PARSE_MSG_L7:
+
+    mov BYTE PTR [read_buffer+r12+65], ':'              # msg formatting
+    mov BYTE PTR [read_buffer+r12+66], 0x0a             # msg formatting
+    # msg has now been formatted, starts at read_buffer+r12, r14 - r12 = bytes to write
+
+    # setup filepath for target_user
+    xor rcx, rcx
+
+    .PARSE_MSG_L8:
+    cmp rcx, 64                                     # check for max length of username
+        jge .PARSE_MSG_L9
+    mov al, BYTE PTR [password+rcx]                 # load 8 bytes from target username
+    cmp al, 0x00
+        je .PARSE_MSG_L9                            # check for early end of username
+    mov BYTE PTR [username+rcx], al                 # store in filepath
+    inc rcx
+    jmp .PARSE_MSG_L8
+    .PARSE_MSG_L9:
+
+    mov BYTE PTR [inbox_file+8], '/'                # replace null byte with /
+
+    # rcx now contains ptr to end of username, add file extension and null terminate
+    mov BYTE PTR [username+rcx], '.'
+    mov BYTE PTR [username+rcx+1], 't'
+    mov BYTE PTR [username+rcx+2], 'x'
+    mov BYTE PTR [username+rcx+3], 't'
+    mov QWORD PTR [username+rcx+4], 0
+
+    mov rax, 1
+    mov rsi, offset inbox_file
+    mov rdi, r13
+    mov rdx, 73
+    syscall
+
+    jmp .EXIT_SUCCESS
+
+
+    # ===== open inbox/target_user.txt =====
+    mov rax, 2                      # syscode for open
+    mov rdi, offset inbox_file      # file to open
+    mov rsi, 0x0201                 # flags create, write
+    mov rdx, 0644                   # mode, rw.r..r..
+    syscall
+    mov r11, rax                    # save FD for inbox/user.txt
+
+
+    # ===== write to inbox/target_user.txt =====
+    mov rax, 1                          # syscode for write
+    mov rsi, offset read_buffer         # read_buffer + r12 = start of formatted message
+    add rsi, r12                        # offset
+    mov rdi, r11                        # fd for inbox/user.txt
+    mov rdx, r14                        # total input bytes we read
+    sub rdx, r12                        # account for offset in total buffer
+    syscall
+
+    # ===== close inbox/target_user.txt =====
+    mov rax, 3                  # syscode for close
+    mov rdi, r11                # fd for inbox/user.txt
+    syscall
+
+    jmp .ACTION_SUCCESS
 
 .NO_ACTION: # Action not found: ec = 2
     mov rax, 1                              # syscode for write
@@ -501,6 +605,17 @@ _start: # Main
 
     mov rax, 6
     jmp .EXIT_FAILURE
+
+.USER_NOT_FOUND: # target user not found: ec = 7
+   mov rax, 1                              # syscode for write
+    mov rdi, r13                            # r13 = accepted connection FD
+    mov rsi, offset error_code_no_user      # addr to string data
+    mov rdx, 15                             # bytes to write
+    syscall
+
+    mov rax, 7
+    jmp .EXIT_FAILURE
+
 
 .ACTION_SUCCESS:
     mov rax, 1                              # syscode for write
