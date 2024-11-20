@@ -17,7 +17,7 @@ posts_file:                 .string "../posts.txt"
 auth_key:                   .string "9UTAxhU0Qh1ZDwTzK9hqXXaXSjcAWwjAeZbqqt0PvUpSrrbWxiLJ6YAmJFbH4ray"
 
 .section .data
-# following 2 must be in the order: pre_buffer : read_buffer 
+# following 3 must be in the order: pre_buffer : read_buffer : post_buffer
 pre_buffer:     .zero 1
 read_buffer:    .zero 2048
 post_buffer:    .zero 1
@@ -452,24 +452,16 @@ _start: # Main
     mov rsi, 0                      # flags for read
     mov rdx, 0                      # mode, nothing to specify here, file already exists
     syscall
-    mov r11, rax                    # save FD
+    mov r15, rax                    # save FD
 
     # ===== read from users.txt and loop for matching username =====
     .PARSE_MSG_L3:
     mov rax, 0                      # syscode for read
     mov rsi, offset user_buffer     # buffer to read to
-    mov rdi, r11                    # users.txt FD
+    mov rdi, r15                    # users.txt FD
     mov rdx, 129                    # max bytes to read
     syscall
 
-    mov rax, 1
-    mov rdi, r13
-    mov rsi, offset user_buffer
-    mov rdx, 129
-    syscall
-
-    mov rax, 129
-    
     cmp rax, 129                    # no more users and we didn't find a matching one
         jne .USER_NOT_FOUND
 
@@ -489,7 +481,7 @@ _start: # Main
 
     # ===== close users.txt =====
     mov rax, 3                  # syscode for close
-    mov rdi, r11                # fd for users.txt
+    mov rdi, r15                # fd for users.txt
     syscall
 
     # format the message
