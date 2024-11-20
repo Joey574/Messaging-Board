@@ -6,18 +6,17 @@ Messaging Board with a twist :)
 In this project I plan on implimenting a primitive web server for a messaging board in **asm** with my own communication protocol
 <br>
 
-### Set-up
+### How to setup
 If you want to try it out yourself you should just be able to run the **_.exe_** on any linux machine
-<br><br>
-To actually interact with the program, I'd recommend using
+
+### Compile it yourself
+You can compile it yourself on a linux machine using
 ```
-ss -tln
+as -o ./main/main.o ./main/main.asm && ld -o ./main/main.exe ./main/main.o
 ```
-to find the port it was assigned and then using
-```
-nc localhost some_port
-```
-to connect to the server
+
+### Use
+To actually interact with the program, I'd recommend using ```ss -tln``` to find the port it was assigned and then using ```nc localhost some_port``` to connect to the server
 <br><br>
 Some examples for how you can interact with the web server can be found below
 ```
@@ -28,6 +27,7 @@ wauth_keyToday, I managed to touch grass     # write a post
 mauth_keyKian;Yo, how's it going?            # send a message to the user 'Kian'
 iauth_key                                    # check your inbox for messages sent to you
 ```
+You can also use ```nc localhost << EOF``` to write out multiple lines of text
 <br>
 
 ## Web Server
@@ -39,7 +39,7 @@ The web server will have 6 different actions a user can perform:
 * **Inbox**
 * **Msg**
 
-Immediately some people might be wondering how a database will be implemented for loging in, signing up, storing messages, etc. For this I plan to use the ever sophisticated *filesystem*, stored in mostly plaintext, as such I don't recommend using this for any top secret communications :)
+Immediately some people might be wondering how a database will be implemented for loging in, signing up, storing messages, etc. For this I plan to use the ever sophisticated *filesystem*, stored in mostly plaintext, as such I don't recommend using this for any top secret communications ;)
 <br>
 
 ### Login
@@ -95,14 +95,20 @@ Once the post is parsed it will be written to the **_posts.txt_** file and a suc
 <br>
 
 ### Inbox
-**READS:** Reads data from **_inbox/some_user.txt_** <br>
+**READS:** Reads data from **_inbox/some_user.txt_** and **_users.txt_**<br>
 **RETURNS:** On success, all messages sent to user, else some error info
 <br><br>
+Inbox expects a 64 byte auth key to be passed, if the auth key is valid it will then return their inbox file, if one exists, messages you recieve are stored in the same format as the **_posts.txt_** file
 
 ### Msg
 **MODIFIES:** Given *other_user* exists, modifies data from **_inbox/other_user.txt_** <br>
 **RETURNS:** On success, success info, else some error info
 <br><br>
+Message expects a 64 byte auth key, a target user, and some message data to be passed in the form
+```
+mauth_keytarget_user;some_message
+```
+If the user is successfully authenticated, and *target_user* is actually a user in **_users.txt_**, *some_message* will be added to their inbox file, if it exists, otherwise it will be created.
 
 ## Communication Protocol
 For how I want to communicate between user and web server, I decided it would be simpler, and more fun, to design my own basic protocol, as http is pretty lame anyways. 
