@@ -4,6 +4,14 @@ Messaging Board with a twist :)
 
 ### Overview
 In this project I plan on implimenting a primitive web server for a messaging board in **asm** with my own communication protocol
+
+``` mermaid
+sequenceDiagram
+    User->>WebServer: sJoey574#semi;abcd
+    WebServer-->>User: 64-byte auth key
+    User->>WebServer: p64-byte auth keyThis is my first post!
+    WebServer-->>User: Action completed succesfully
+```
 <br>
 
 ### How to setup
