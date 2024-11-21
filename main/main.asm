@@ -82,7 +82,7 @@ _start: # Main
     mov r13, rax        # save new socket FD
 
 
-     # ===== fork process =====
+    # ===== fork process =====
     mov rax, 57         # syscode for fork
     syscall             # fork
 
