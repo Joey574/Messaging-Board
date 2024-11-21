@@ -4,6 +4,14 @@ Messaging Board with a twist :)
 
 ### Overview
 In this project I plan on implimenting a primitive web server for a messaging board in **asm** with my own communication protocol
+
+``` mermaid
+sequenceDiagram
+    User->>WebServer: sJoey574#semi;abcd
+    WebServer-->>User: 64-byte auth key
+    User->>WebServer: p64-byte auth keyThis is my first post!
+    WebServer-->>User: Action completed succesfully
+```
 <br>
 
 ### How to setup
@@ -37,7 +45,7 @@ The web server will have 6 different actions a user can perform:
 * **Read**
 * **Post**
 * **Inbox**
-* **Msg**
+* **Message**
 
 Immediately some people might be wondering how a database will be implemented for loging in, signing up, storing messages, etc. For this I plan to use the ever sophisticated *filesystem*, stored in mostly plaintext, as such I don't recommend using this for any top secret communications ;)
 <br>
@@ -59,6 +67,7 @@ Padding will be done by simply adding 0x00 to the plaintext until it reaches the
 ### Signup
 **NOTE:** Both **_username_** and **_password_** have a max size of **64 bytes** <br>
 **MODIFIES:** Given user doesn't already exist, user will be added to **_users.txt_** <br>
+**READS:** Reads data from **_users.txt_** <br>
 **RETURNS:** On success, a 64 byte auth key, else some error info
 <br><br>
 The **signup** method, like the **login** method, doesn't take an auth key, instead taking in a username and a password in the format
@@ -95,13 +104,14 @@ Once the post is parsed it will be written to the **_posts.txt_** file and a suc
 <br>
 
 ### Inbox
-**READS:** Reads data from **_inbox/some_user.txt_** and **_users.txt_**<br>
+**READS:** Reads data from **_inbox/some_user.txt_** and **_users.txt_** <br>
 **RETURNS:** On success, all messages sent to user, else some error info
 <br><br>
 Inbox expects a 64 byte auth key to be passed, if the auth key is valid it will then return their inbox file, if one exists, messages you recieve are stored in the same format as the **_posts.txt_** file
 
-### Msg
+### Message
 **MODIFIES:** Given *other_user* exists, modifies data from **_inbox/other_user.txt_** <br>
+**READS:** Reads data from **_users.txt_** <br>
 **RETURNS:** On success, success info, else some error info
 <br><br>
 Message expects a 64 byte auth key, a target user, and some message data to be passed in the form
