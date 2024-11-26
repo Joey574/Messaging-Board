@@ -111,6 +111,9 @@ _start: # Main
     syscall                         # call read
     mov r14, rax                    # r14 now contains bytes read
 
+    cmp r14, 0                      # make sure we get passed at least 1 byte
+        je .INVALID_ACTION
+
     # Handle user action
     mov al, BYTE PTR [read_buffer]
     cmp al, 'l'
@@ -177,6 +180,10 @@ _start: # Main
 
     # Parse password
     .PARSE_SIGNUP_L2:
+
+        cmp rcx, 0                              # make sure we get passed at least 1 char for the username
+            je .INVALID_ACTION
+
         xor rdx, rdx                            # counter for password position
         add rcx, 2                              # counter for buffer position, last pos is right before ; so add 2 to get to next relevent data
     .PARSE_SIGNUP_L3:
